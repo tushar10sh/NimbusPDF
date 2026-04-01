@@ -1,0 +1,15 @@
+.env
+data/
+!data/.gitkeep
+
+# Rust
+backend/target/
+
+# Node
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Editor
+.DS_Store
+*.swp

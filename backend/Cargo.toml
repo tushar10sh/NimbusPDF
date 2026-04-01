@@ -1,0 +1,60 @@
+[package]
+name = "nimbus-pdf-backend"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "nimbus"
+path = "src/main.rs"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart", "macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Config
+config = "0.14"
+
+# HTTP client (AI proxy, Google Drive)
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+
+# Auth / JWT
+jsonwebtoken = "9"
+axum-extra = { version = "0.9", features = ["cookie"] }
+
+# Crypto (session signing, PKCE)
+ring = "0.17"
+base64 = "0.22"
+sha2 = "0.10"
+
+# Random number generation (PKCE, state, nonce)
+rand = "0.8"
+
+# Hex encoding
+hex = "0.4"
+
+# URL encoding
+percent-encoding = "2"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "1"
+chrono = { version = "0.4", features = ["serde"] }
+tokio-util = { version = "0.7", features = ["io"] }
+bytes = "1"
+futures = "0.3"
+http-body-util = "0.1"
+mime_guess = "2"
+
+[dev-dependencies]
+axum-test = "14"
+tokio-test = "0.4"

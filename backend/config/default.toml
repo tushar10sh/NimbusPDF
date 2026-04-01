@@ -1,0 +1,26 @@
+[server]
+host = "0.0.0.0"
+port = 3000
+data_dir = "./data"
+config_dir = "./config"
+
+[session]
+cookie_name = "nimbus_session"
+# TTL in seconds (24h default for anonymous)
+anonymous_ttl = 86400
+
+[ai]
+# Default system prompt file (relative to config_dir)
+system_prompt_file = "ai_system_prompt.md"
+summary_prompt_file = "ai_system_prompt.summary.md"
+keypoints_prompt_file = "ai_system_prompt.keypoints.md"
+# Max tokens to send as document context
+max_context_tokens = 4096
+
+[storage]
+# "local" only for now; "gdrive" enabled per-user when OAuth token exists
+backend = "local"
+
+[auth]
+# Set to true to require login for all features
+require_auth = false

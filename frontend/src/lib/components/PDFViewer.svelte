@@ -4,7 +4,8 @@
   - Highlight overlay: colored divs over canvas using PDF coordinate system
   - Text selection: mouseup → color picker popover → save highlight
   - IntersectionObserver tracks current page
-  - Re-renders on zoom change
+  - Re-renders on zoom change with device-pixel-ratio scaling for crisp text on HiDPI displays
+  - Keyword search: highlights matching text items across all pages using PDF.js text content API
 -->
 <script>
   import { onMount, onDestroy, tick } from 'svelte'
@@ -27,7 +28,7 @@
   let pdfDoc = null
   let pageCount = 0
   let observer
-  let renderVersion = 0  // bump to force re-render on zoom change
+  let renderVersion = 0
 
   // Color picker state
   let pickerVisible = false
@@ -37,6 +38,11 @@
 
   // Map pageNum → { canvas, overlayEl, viewport }
   let pageRefs = {}
+
+  // Search: rawTextCache stores PDF-space items (zoom-invariant); searchResults stores CSS-px rects
+  let rawTextCache = {}   // pageNum → PDF.js text items
+  let searchResults = {}  // pageNum → [{ left, top, width, height }]
+  let lastSearchQuery = ''
 
   onMount(async () => {
     const url = `/api/pdfs/${docId}/file`
@@ -55,7 +61,6 @@
       { root: container, threshold: 0.3 }
     )
 
-    // Render all pages after DOM is ready
     await tick()
     for (let i = 1; i <= pageCount; i++) {
       await renderPageNum(i)
@@ -71,6 +76,9 @@
     rerenderAll()
   }
 
+  // Re-run search when query changes (zoom changes go through rerenderAll which calls runSearch)
+  $: if (pdfDoc) handleSearch($pdfStore.searchQuery)
+
   async function rerenderAll() {
     if (!pdfDoc) return
     renderVersion++
@@ -79,6 +87,8 @@
       if (renderVersion !== myVersion) break
       await renderPageNum(i)
     }
+    // Refresh search rect positions now that viewports are updated
+    if (lastSearchQuery) await runSearch(lastSearchQuery)
   }
 
   async function renderPageNum(pageNum) {
@@ -88,27 +98,101 @@
     const pg = await pdfDoc.getPage(pageNum)
     const scale = $pdfStore.zoom / 100
     const viewport = pg.getViewport({ scale })
+    const dpr = window.devicePixelRatio || 1
 
     const canvas = ref.canvas
     const ctx = canvas.getContext('2d')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
 
-    // Also size the wrapper and overlay
+    // Physical pixels — scaled by DPR for crisp rendering on HiDPI / Retina displays
+    canvas.width = Math.floor(viewport.width * dpr)
+    canvas.height = Math.floor(viewport.height * dpr)
+
+    // CSS display size stays at logical viewport dimensions
+    canvas.style.width = viewport.width + 'px'
+    canvas.style.height = viewport.height + 'px'
+
     ref.wrapper.style.width = viewport.width + 'px'
     ref.wrapper.style.height = viewport.height + 'px'
     ref.overlay.style.width = viewport.width + 'px'
     ref.overlay.style.height = viewport.height + 'px'
 
+    // Scale context so PDF.js renders at full physical resolution
+    ctx.scale(dpr, dpr)
     await pg.render({ canvasContext: ctx, viewport }).promise
 
-    // Store viewport for highlight positioning
     pageRefs[pageNum].viewport = viewport
-
     observer?.observe(ref.wrapper)
   }
 
-  // Text selection → color picker
+  // ── Search ────────────────────────────────────────────────────────────────
+
+  async function handleSearch(query) {
+    if (!query?.trim()) {
+      searchResults = {}
+      lastSearchQuery = ''
+      return
+    }
+    lastSearchQuery = query
+    await runSearch(query)
+  }
+
+  async function runSearch(query) {
+    if (!pdfDoc) return
+    const q = query.toLowerCase().trim()
+    const result = {}
+    let firstMatchPage = null
+
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+      // Fetch and cache raw text items in PDF coordinate space (zoom-invariant)
+      if (!rawTextCache[pageNum]) {
+        try {
+          const pg = await pdfDoc.getPage(pageNum)
+          const content = await pg.getTextContent()
+          rawTextCache[pageNum] = content.items
+        } catch {
+          continue
+        }
+      }
+
+      // Abort if a newer query has been issued
+      if (lastSearchQuery !== query) return
+
+      const viewport = pageRefs[pageNum]?.viewport
+      if (!viewport) continue
+
+      const rects = []
+      for (const item of rawTextCache[pageNum]) {
+        if (!item.str?.toLowerCase().includes(q)) continue
+        // transform = [scaleX, skewY, skewX, scaleY, tx, ty] — tx/ty are PDF-space origin
+        const [, , , , x, y] = item.transform
+        const w = item.width
+        const h = item.height
+        // convertToViewportRectangle handles the PDF→canvas coordinate flip
+        const [vx1, vy1, vx2, vy2] = viewport.convertToViewportRectangle([x, y, x + w, y + h])
+        rects.push({
+          left:   Math.min(vx1, vx2),
+          top:    Math.min(vy1, vy2),
+          width:  Math.abs(vx2 - vx1),
+          height: Math.abs(vy2 - vy1),
+        })
+      }
+      if (rects.length) {
+        result[pageNum] = rects
+        if (!firstMatchPage) firstMatchPage = pageNum
+      }
+    }
+
+    if (lastSearchQuery !== query) return
+    searchResults = result
+
+    if (firstMatchPage && pageRefs[firstMatchPage]) {
+      await tick()
+      pageRefs[firstMatchPage].wrapper.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+  }
+
+  // ── Highlights ───────────────────────────────────────────────────────────
+
   function onMouseUp(event) {
     const selection = window.getSelection()
     if (!selection || selection.isCollapsed) {
@@ -122,7 +206,6 @@
       return
     }
 
-    // Determine which page the selection is on by walking up from anchor node
     const anchorNode = selection.anchorNode
     const pageEl = anchorNode?.parentElement?.closest('[data-page]')
     if (!pageEl) {
@@ -134,7 +217,6 @@
     const range = selection.getRangeAt(0)
     const rects = Array.from(range.getClientRects())
 
-    // Convert rects to coordinates relative to the page wrapper
     const wrapperRect = pageEl.getBoundingClientRect()
     const relativeRects = rects.map(r => ({
       left: r.left - wrapperRect.left,
@@ -145,7 +227,6 @@
 
     pendingSelection = { text: selectedText, page: pageNum, rects: relativeRects }
 
-    // Position the picker near the selection end
     const lastRect = rects[rects.length - 1]
     pickerX = lastRect.right
     pickerY = lastRect.bottom + window.scrollY + 4
@@ -186,7 +267,6 @@
     return ($pdfStore.highlights ?? []).filter(h => h.page === pageNum)
   }
 
-  // Register page DOM refs via Svelte action
   function registerPage(node, pageNum) {
     const canvas = node.querySelector('canvas')
     const overlay = node.querySelector('.highlight-overlay')
@@ -243,7 +323,7 @@
     >
       <canvas></canvas>
 
-      <!-- Highlight overlay -->
+      <!-- Saved highlight overlay -->
       <div class="highlight-overlay absolute inset-0 pointer-events-none">
         {#each highlightsForPage(pageNum) as hl (hl.id)}
           {#each hl.rects as rect}
@@ -266,6 +346,26 @@
           {/each}
         {/each}
       </div>
+
+      <!-- Search results overlay -->
+      {#if searchResults[pageNum]?.length}
+        <div class="absolute inset-0 pointer-events-none" style="z-index:5">
+          {#each searchResults[pageNum] as rect}
+            <div
+              class="absolute"
+              style="
+                left:{rect.left}px;
+                top:{rect.top}px;
+                width:{rect.width}px;
+                height:{rect.height}px;
+                background:rgba(255,200,0,0.45);
+                border:1px solid rgba(200,140,0,0.7);
+                border-radius:1px;
+              "
+            ></div>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/each}
 </div>

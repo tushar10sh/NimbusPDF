@@ -4,8 +4,8 @@ FRONTEND bugs
 3. In the AISidebar.svelte, clear functionaility is not working as expected. Status: Fixed. Added DELETE /ai/history/:doc_id backend endpoint; clearChat() now calls it before wiping local state so history doesn't reappear on reload.
 4. When a new PDF is uploaded, page shows 401 error first but when reloaded, everything looks good. Status: Fixed. Root cause same as bug 5 — pdfStore.load() ran during SSR before the session cookie was available. Moving to onMount resolved it.
 5. After opening a PDF, if the viewer is refresh, page crashes with following error : (Error: Cannot call `fetch` eagerly during server-side rendering with relative URL (/api/pdfs/59110104-5e92-4b77-825f-62d8ae725fcd) — put your `fetch` calls inside `onMount` or a `load` function instead). Status: Fixed. Moved `pdfStore.load(docId)` from a reactive statement (`$:`) to `onMount` in viewer/[docId]/+page.svelte so it only runs client-side.
-6. Search functionality when the PDF is opened is not working. Status: Pending.
-7. PDF rendering on Hi res displays like mac is blurry. Status: Pending.
+6. Search functionality when the PDF is opened is not working. Status: Fixed. PDFViewer now reacts to $pdfStore.searchQuery; uses PDF.js getTextContent() to fetch text items per page, converts their PDF-space coordinates to viewport CSS pixels via convertToViewportRectangle(), and renders a yellow search overlay. First matching page is scrolled into view. rawTextCache is zoom-invariant (PDF space), and search rects are recomputed after every zoom re-render.
+7. PDF rendering on Hi res displays like mac is blurry. Status: Fixed. renderPageNum() now reads window.devicePixelRatio and sets canvas.width/height to floor(viewport * dpr) physical pixels, then scales the 2D context by dpr before rendering. Canvas CSS size stays at logical viewport dimensions so layout is unchanged.
 8. PDF doesn't support selected of text of highlighting sections of text. Status: Pending. 
 
 BACKEND bugs

@@ -51,7 +51,7 @@
     {#if error}<p class="text-red-500 text-sm mt-2">{error}</p>{/if}
   </section>
 
-  {#if $auth.user}
+  {#if $auth.user?.authenticated}
     <section class="bg-white rounded-lg shadow p-6">
       <h2 class="font-semibold mb-4">Google Drive Sync</h2>
       {#if $auth.user.gdrive_connected}

@@ -15,6 +15,7 @@ pub struct ServerConfig {
     pub port: u16,
     pub data_dir: String,
     pub config_dir: String,
+    pub max_upload_bytes: usize,
 }
 
 #[derive(Clone, Debug, Deserialize)]

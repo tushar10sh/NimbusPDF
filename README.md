@@ -30,6 +30,7 @@ A self-hosted, containerized PDF reader with an offline-capable AI assistant. Al
 - **Pluggable AI** — works with any OpenAI-compatible endpoint (Ollama, LM Studio, OpenAI, etc.)
 - **Long-term Memory** — on upload, optionally summarise a document into a user-editable memory file
 - **Document Categories** — group documents into a graph-RAG-ready node/edge structure
+- **Document Management** — delete documents from the library (removes PDF and all associated data)
 - **Optional Auth** — OpenID Connect login; app is fully functional without it
 - **Google Drive Sync** — authenticated users can connect Drive for cloud backup
 - **Data Portability** — everything is plain files under `data/`; zip and move at any time
@@ -237,6 +238,7 @@ Navigate to `http://localhost:5173`. All `/api` calls are proxied to the Rust se
 | `server.port` | `3000` | Listen port |
 | `server.data_dir` | `./data` | Root for all user data |
 | `server.config_dir` | `./config` | Directory containing prompt files and this TOML |
+| `server.max_upload_bytes` | `104857600` | Maximum PDF upload size in bytes (100 MB). Must match `nginx.conf` `client_max_body_size` |
 | `session.cookie_name` | `nimbus_session` | Cookie name |
 | `session.anonymous_ttl` | `86400` | Anonymous session lifetime in seconds (24 h) |
 | `ai.system_prompt_file` | `ai_system_prompt.md` | Chat prompt template filename |
@@ -410,6 +412,20 @@ docker compose logs backend
 # - config/default.toml missing (must be present in backend/config/)
 # - Port 3000 already in use on host
 ```
+
+### PDF upload fails with "File too large" / 413 error
+
+The upload limit is set in two places and both must agree:
+
+```bash
+# 1. backend/config/default.toml
+server.max_upload_bytes = 104857600   # bytes
+
+# 2. nginx.conf
+client_max_body_size 100m;
+```
+
+Increase both values, then rebuild: `docker compose up --build`.
 
 ### PDF upload fails / 500 error
 

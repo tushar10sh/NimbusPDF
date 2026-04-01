@@ -7,7 +7,7 @@ mod routes;
 mod session;
 mod storage;
 
-use axum::{middleware, Router};
+use axum::{extract::DefaultBodyLimit, middleware, Router};
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
@@ -79,6 +79,7 @@ async fn main() -> anyhow::Result<()> {
             state.clone(),
             session::session_middleware,
         ))
+        .layer(DefaultBodyLimit::max(state.config.server.max_upload_bytes))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);

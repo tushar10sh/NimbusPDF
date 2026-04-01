@@ -16,8 +16,14 @@ async function request(method, path, body) {
   const res = await fetch(`${BASE}${path}`, opts);
 
   if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(text || `HTTP ${res.status}`);
+    let message;
+    try {
+      const json = await res.json();
+      message = json.error ?? JSON.stringify(json);
+    } catch {
+      message = await res.text().catch(() => res.statusText);
+    }
+    throw new Error(message || `HTTP ${res.status}`);
   }
 
   if (res.status === 204) return null;

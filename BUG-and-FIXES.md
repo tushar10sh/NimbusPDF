@@ -7,6 +7,11 @@ FRONTEND bugs
 6. Search functionality when the PDF is opened is not working. Status: Fixed. PDFViewer now reacts to $pdfStore.searchQuery; uses PDF.js getTextContent() to fetch text items per page, converts their PDF-space coordinates to viewport CSS pixels via convertToViewportRectangle(), and renders a yellow search overlay. First matching page is scrolled into view. rawTextCache is zoom-invariant (PDF space), and search rects are recomputed after every zoom re-render.
 7. PDF rendering on Hi res displays like mac is blurry. Status: Fixed. renderPageNum() now reads window.devicePixelRatio and sets canvas.width/height to floor(viewport * dpr) physical pixels, then scales the 2D context by dpr before rendering. Canvas CSS size stays at logical viewport dimensions so layout is unchanged.
 8. PDF doesn't support selected of text of highlighting sections of text. Status: Pending. 
+9. Unable to upload pdf after bug fixes. Status: Fixed. Max upload limit was set to 2MB (default for axum).
+10. Proper messages weren't flowing to front end in case of upload failure. Status: Fixed.
+11. When user selects to add the document to long term memory, the 401 error comes. But when page is refreshed the pdf appear on the main screen and then open successfully upon clicking. If the ue declines to add document to long term memory, it successfully open on the first go.  Status: Fixed. auth.init() IS called in the layout. The problem is clear now: /auth/me always returns a JSON object (never null), so $auth.user is always truthy — even for anonymous users. Every anonymous user sees the memory
+  confirm dialog, then gets a 401.
+12. Delete PDF feature wasn't present. Status: Implemented.
 
 BACKEND bugs
 1. In model configuration, the frontend expected json output but inside backend/src/routes/ai.rs:save_ai_config returned only status code. Status: Fixed.

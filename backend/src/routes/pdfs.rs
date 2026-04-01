@@ -41,35 +41,69 @@ async fn list_pdfs(
 async fn upload_pdf(
     State(state): State<AppState>,
     Extension(handle): Extension<SessionHandle>,
+    headers: HeaderMap,
     mut multipart: Multipart,
-) -> Result<(StatusCode, Json<DocMeta>), StatusCode> {
+) -> Result<(StatusCode, Json<DocMeta>), (StatusCode, Json<serde_json::Value>)> {
+    let max_bytes = state.config.server.max_upload_bytes;
+    let max_mb = max_bytes / (1024 * 1024);
+
+    // Reject early if Content-Length already exceeds the limit
+    if let Some(content_length) = headers
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        if content_length > max_bytes {
+            return Err((
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(serde_json::json!({
+                    "error": format!("File too large. Maximum upload size is {} MB.", max_mb)
+                })),
+            ));
+        }
+    }
+
     let principal = Principal::from_session(&handle.data);
 
     let mut pdf_bytes: Option<Vec<u8>> = None;
     let mut filename = "upload.pdf".to_string();
 
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| StatusCode::BAD_REQUEST)?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        // multer surfaces body-limit exhaustion as an incomplete field error
+        let msg = if e.to_string().contains("incomplete") || e.to_string().contains("limit") {
+            format!("File too large. Maximum upload size is {} MB.", max_mb)
+        } else {
+            "Failed to read upload data.".to_string()
+        };
+        (StatusCode::PAYLOAD_TOO_LARGE, Json(serde_json::json!({ "error": msg })))
+    })? {
         if let Some(fname) = field.file_name() {
             if !fname.is_empty() {
                 filename = fname.to_string();
             }
         }
-        let bytes = field
-            .bytes()
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        let bytes = field.bytes().await.map_err(|e| {
+            let msg = if e.to_string().contains("incomplete") || e.to_string().contains("limit") {
+                format!("File too large. Maximum upload size is {} MB.", max_mb)
+            } else {
+                "Failed to read upload data.".to_string()
+            };
+            (StatusCode::PAYLOAD_TOO_LARGE, Json(serde_json::json!({ "error": msg })))
+        })?;
         if !bytes.is_empty() && pdf_bytes.is_none() {
             pdf_bytes = Some(bytes.to_vec());
         }
     }
 
-    let bytes = pdf_bytes.ok_or(StatusCode::BAD_REQUEST)?;
+    let bytes = pdf_bytes.ok_or_else(|| (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({ "error": "No PDF file received." })),
+    ))?;
     if bytes.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "Uploaded file is empty." })),
+        ));
     }
 
     let storage = Arc::clone(&state.storage);
@@ -82,10 +116,10 @@ async fn upload_pdf(
         storage.save_pdf(&principal_clone, &filename_clone, &bytes_clone)
     })
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Internal error saving file." }))))?
     .map_err(|e| {
         tracing::error!("save_pdf: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": "Failed to save PDF." })))
     })?;
 
     // Extract page count

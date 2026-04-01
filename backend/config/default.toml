@@ -3,6 +3,8 @@ host = "0.0.0.0"
 port = 3000
 data_dir = "./data"
 config_dir = "./config"
+# Maximum upload size in bytes (default 100 MB — must match nginx client_max_body_size)
+max_upload_bytes = 104857600
 
 [session]
 cookie_name = "nimbus_session"

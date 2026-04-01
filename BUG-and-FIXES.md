@@ -12,6 +12,8 @@ FRONTEND bugs
 11. When user selects to add the document to long term memory, the 401 error comes. But when page is refreshed the pdf appear on the main screen and then open successfully upon clicking. If the ue declines to add document to long term memory, it successfully open on the first go.  Status: Fixed. auth.init() IS called in the layout. The problem is clear now: /auth/me always returns a JSON object (never null), so $auth.user is always truthy — even for anonymous users. Every anonymous user sees the memory
   confirm dialog, then gets a 401.
 12. Delete PDF feature wasn't present. Status: Implemented.
+13. Unable to select words/sentences inside PDF viewer for searching or asking AI for assistance. Status: Fixed. Added PDF.js TextLayer (pdfjs-dist 4.x API) rendered as a transparent positioned-span overlay on each page canvas. TextLayer instances are cancelled and recreated on zoom re-render and cleaned up on component destroy. Minimal text layer CSS added to app.css. Highlight overlay given explicit z-index:3 to remain above the text layer (z-index:2) while search overlay stays at z-index:5.
+14. The highlight option opens up but fill box color of the underlying text doesn't change. Status: Pending.
 
 BACKEND bugs
 1. In model configuration, the frontend expected json output but inside backend/src/routes/ai.rs:save_ai_config returned only status code. Status: Fixed.

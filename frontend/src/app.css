@@ -6,3 +6,30 @@
   --sidebar-width: 380px;
   --toolbar-height: 48px;
 }
+
+/* PDF.js text layer — enables native text selection over the canvas */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  pointer-events: auto;
+}
+
+.textLayer ::selection {
+  background-color: rgba(59, 130, 246, 0.35);
+  color: transparent;
+}

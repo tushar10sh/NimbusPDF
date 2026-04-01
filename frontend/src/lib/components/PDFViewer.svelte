@@ -36,8 +36,11 @@
   let pickerY = 0
   let pendingSelection = null  // { text, page, rects }
 
-  // Map pageNum → { canvas, overlayEl, viewport }
+  // Map pageNum → { canvas, overlay, textLayerDiv, viewport }
   let pageRefs = {}
+
+  // Active TextLayer instances — cancelled before re-render and on destroy
+  let textLayers = {}
 
   // Search: rawTextCache stores PDF-space items (zoom-invariant); searchResults stores CSS-px rects
   let rawTextCache = {}   // pageNum → PDF.js text items
@@ -67,7 +70,10 @@
     }
   })
 
-  onDestroy(() => observer?.disconnect())
+  onDestroy(() => {
+    observer?.disconnect()
+    Object.values(textLayers).forEach(tl => tl.cancel())
+  })
 
   // Re-render all pages when zoom changes
   let lastZoom = null
@@ -122,6 +128,24 @@
 
     pageRefs[pageNum].viewport = viewport
     observer?.observe(ref.wrapper)
+
+    // Cancel any in-progress text layer for this page before creating a new one
+    textLayers[pageNum]?.cancel()
+    delete textLayers[pageNum]
+
+    // Render text layer — transparent positioned spans that enable native text selection
+    if (ref.textLayerDiv) {
+      ref.textLayerDiv.replaceChildren()
+      ref.textLayerDiv.style.width = viewport.width + 'px'
+      ref.textLayerDiv.style.height = viewport.height + 'px'
+      const tl = new pdfjsLib.TextLayer({
+        textContentSource: pg.streamTextContent(),
+        container: ref.textLayerDiv,
+        viewport,
+      })
+      textLayers[pageNum] = tl
+      tl.render().catch(() => {}) // non-fatal — page is still readable without text layer
+    }
   }
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -270,7 +294,8 @@
   function registerPage(node, pageNum) {
     const canvas = node.querySelector('canvas')
     const overlay = node.querySelector('.highlight-overlay')
-    pageRefs[pageNum] = { wrapper: node, canvas, overlay, viewport: null }
+    const textLayerDiv = node.querySelector('.textLayer')
+    pageRefs[pageNum] = { wrapper: node, canvas, overlay, textLayerDiv, viewport: null }
 
     return {
       destroy() {
@@ -323,8 +348,11 @@
     >
       <canvas></canvas>
 
-      <!-- Saved highlight overlay -->
-      <div class="highlight-overlay absolute inset-0 pointer-events-none">
+      <!-- Text layer: transparent positioned spans for native text selection -->
+      <div class="textLayer"></div>
+
+      <!-- Saved highlight overlay (z-index 3, above text layer) -->
+      <div class="highlight-overlay absolute inset-0 pointer-events-none" style="z-index:3">
         {#each highlightsForPage(pageNum) as hl (hl.id)}
           {#each hl.rects as rect}
             <div

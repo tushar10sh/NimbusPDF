@@ -13,4 +13,4 @@ frontend/build/
 # Editor
 .DS_Store
 *.swp
-.claude
+.claude/
